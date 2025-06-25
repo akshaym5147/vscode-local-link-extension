@@ -1,63 +1,221 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as path from 'path';
+import {
+  Node,
+  Project,
+  ts,
+  ExportedDeclarations,
+  FunctionDeclaration,
+  ClassDeclaration,
+  VariableDeclaration,
+  Identifier
+} from "ts-morph";
 import * as fs from 'fs';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('localModuleLinker.linkLocalModules', async () => {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders) {
-        vscode.window.showErrorMessage('No workspace folder found.');
-        return;
-      }
-
-      const rootPath = workspaceFolders[0].uri.fsPath;
-      const packageJsonPath = path.join(rootPath, 'package.json');
-      if (!fs.existsSync(packageJsonPath)) {
-        vscode.window.showErrorMessage('package.json not found in root.');
-        return;
-      }
-
-      const pkgJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      const dependencies = Object.assign({}, pkgJson.dependencies, pkgJson.devDependencies);
-      const found: string[] = [];
-
-      for (const dep in dependencies) {
-        const localPath = path.join(rootPath, '..', dep);
-        if (fs.existsSync(localPath)) {
-          found.push(`${dep} → ${localPath}`);
-        }
-      }
-
-      if (found.length === 0) {
-        vscode.window.showInformationMessage('No local modules found.');
-      } else {
-        vscode.window.showInformationMessage(`Linked Local Modules:\n${found.join('\n')}`);
-      }
-    })
-  );
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath || '';
 
   context.subscriptions.push(
-    vscode.languages.registerDefinitionProvider(['javascript', 'typescript'], {
-      provideDefinition(document, position, token) {
+    vscode.languages.registerDefinitionProvider(['typescript', 'javascript'], {
+      async provideDefinition(document, position, token) {
         const wordRange = document.getWordRangeAtPosition(position);
-        const word = document.getText(wordRange);
+        if (!wordRange) return;
 
-        // Dummy logic: redirect any function name "someFunc" to a local path
-        if (word === 'someFunc') {
-          const targetPath = path.join(vscode.workspace.rootPath || '', '../dsa/155MinStack.js');
-          if (fs.existsSync(targetPath)) {
-            return new vscode.Location(vscode.Uri.file(targetPath), new vscode.Position(0, 0));
+        const word = document.getText(wordRange);
+        const text = document.getText();
+        console.log("🟡 provideDefinition triggered for:", word);
+
+        // 🔒 Escape special characters in the word for regex
+        const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const safeWord = escapeRegex(word);
+
+        // ✅ Regex to handle default, named, and mixed imports
+        // Step 1: Use multiple regex patterns
+        const importRegexes = [
+          // default or mixed import: import Highlighter from "module";
+          new RegExp(`import\\s+${safeWord}\\s*(?:,\\s*\\{[^}]*\\})?\\s*from\\s+['"]([^'"]+)['"]`),
+          // named import: import { Highlighter } from "module";
+          new RegExp(`import\\s+\\{[^}]*\\b${safeWord}\\b[^}]*\\}\\s*from\\s+['"]([^'"]+)['"]`),
+        ];
+
+        // Step 2: Try to match any regex
+        let moduleName: string | undefined;
+        for (const regex of importRegexes) {
+          const match = regex.exec(text);
+          if (match) {
+            moduleName = match[1];
+            console.log(`📦 Matched import: '${word}' from '${moduleName}'`);
+            break;
           }
         }
+
+        if (!moduleName) {
+          console.log(`❌ No matching import found for '${word}'`);
+          return;
+        }
+
+        console.log(`📦 Trying to resolve symbol '${word}' from module: '${moduleName}'`);
+
+        const parentDir = path.resolve(workspaceFolder, '..');
+        let localPath: string | undefined;
+
+        const siblingDirs = fs.readdirSync(parentDir, { withFileTypes: true })
+          .filter(entry => entry.isDirectory())
+          .map(entry => entry.name);
+
+        for (const dir of siblingDirs) {
+          const pkgJsonPath = path.join(parentDir, dir, 'package.json');
+          if (fs.existsSync(pkgJsonPath)) {
+            try {
+              const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+              if (pkg.name === moduleName) {
+                localPath = path.join(parentDir, dir);
+                console.log(`✅ Found local package '${pkg.name}' at: ${localPath}`);
+                break;
+              }
+            } catch (err) {
+              console.log(`⚠️ Failed to parse package.json in ${dir}:`, err);
+            }
+          }
+        }
+
+        if (!localPath) {
+          console.log(`❌ No local package found for '${moduleName}'`);
+          return null;
+        }
+
+        // ✅ Initialize ts-morph project
+        const project = new Project({
+          compilerOptions: {
+            allowJs: true,
+            checkJs: false,
+            jsx: ts.JsxEmit.React,
+            target: ts.ScriptTarget.ESNext,
+            module: ts.ModuleKind.ESNext
+          },
+          skipAddingFilesFromTsConfig: true,
+        });
+
+
+        // const sourceFiles = project.getSourceFiles();
+
+        let sourceFiles;
+        const tsconfigPath = path.join(localPath, 'tsconfig.json');
+
+        if (fs.existsSync(tsconfigPath)) {
+          project.addSourceFilesFromTsConfig(tsconfigPath);
+          console.log("✅ Loaded source files from tsconfig.");
+        } else {
+          project.addSourceFilesAtPaths(path.join(localPath, '**/*.{ts,tsx,js,jsx}'));
+          console.log("📂 Manually added JS/TS source files.");
+        }
+
+        sourceFiles = project.getSourceFiles();
+        console.log("📁 Final source files loaded:", sourceFiles.map(f => f.getFilePath()));
+
+
+        console.log(`📄 Scanning ${sourceFiles.length} source files in ${moduleName}`);
+
+        const foundLocations: vscode.Location[] = [];
+
+        sourceFiles.sort((a, b) => {
+          const aName = path.basename(a.getFilePath()).toLowerCase();
+          const bName = path.basename(b.getFilePath()).toLowerCase();
+          return (aName === 'index.js' || aName === 'index.ts') ? -1 : 1;
+        });
+
+
+        for (const sourceFile of sourceFiles) {
+          try {
+            console.log(`🔍 Checking file: ${sourceFile.getFilePath()}`);
+            const exportedDeclarations = sourceFile.getExportedDeclarations();
+
+            for (const [name, declarations] of exportedDeclarations) {
+              if (name === 'default' && declarations.length) {
+                for (const decl of declarations) {
+                  const aliased = decl.getSymbol()?.getAliasedSymbol();
+                  const finalDecl = aliased?.getDeclarations()?.[0] || decl;
+
+                  const id = finalDecl.getSymbol()?.getName();
+                  if (id === word || word === 'default') {
+                    const file = finalDecl.getSourceFile();
+                    const line = finalDecl.getStartLineNumber?.() ?? 1;
+                    const location = new vscode.Location(
+                      vscode.Uri.file(file.getFilePath()),
+                      new vscode.Position(line - 1, 0)
+                    );
+                    console.log(`🎯 Found match for '${word}' at: ${file.getFilePath()}:${line}`);
+                    foundLocations.push(location);
+                  }
+                }
+              }
+
+              if (name === word && declarations.length) {
+                const decl = declarations[0];
+                const file = decl.getSourceFile();
+                const line = decl.getStartLineNumber?.() ?? 1;
+                const location = new vscode.Location(
+                  vscode.Uri.file(file.getFilePath()),
+                  new vscode.Position(line - 1, 0)
+                );
+                console.log(`🎯 Found named export '${word}' at: ${file.getFilePath()}:${line}`);
+                foundLocations.push(location);
+              }
+            }
+
+            let decls = exportedDeclarations.get(word);
+
+            if (!decls) {
+              decls = exportedDeclarations.get("default");
+
+              if (decls) {
+                const matching = decls.find(d => {
+                  const named = d as Node & { getName?: () => string };
+                  return typeof named.getName === 'function' && named.getName() === word;
+                });
+
+                if (matching) {
+                  decls = [matching];
+                } else {
+                  console.log(`⚠️ Default export exists, but doesn't match '${word}'`);
+                  continue; // Try next file
+                }
+              } else {
+                console.log(`⚠️ No declaration found for '${word}'`);
+                continue; // Try next file
+              }
+            }
+
+            for (const decl of decls) {
+              const file = decl.getSourceFile();
+              const line = decl.getStartLineNumber?.() ?? 1;
+              const uri = vscode.Uri.file(file.getFilePath());
+              const position = new vscode.Position(line - 1, 0);
+              console.log(`🎯 Found fallback match for '${word}' at: ${file.getFilePath()}:${line}`);
+              foundLocations.push(new vscode.Location(uri, position));
+            }
+          } catch (err) {
+            console.error(`🔥 Error in file ${sourceFile.getFilePath()}:`, err);
+          }
+        }
+
+        if (foundLocations.length > 0) {
+          console.log(`✅ Returning first match for '${word}'`);
+          return foundLocations[0];
+        } else {
+          console.log(`❌ No matches found for '${word}' in any source file.`);
+          return null;
+        }
+
+
+        console.log(`❌ Symbol '${word}' not found in exported declarations`);
         return null;
-      },
+      }
     })
   );
+
+  console.log('🚀 Extension "local-definition-linker" is now active!');
 }
 
-export function deactivate() {}
+
+export function deactivate() { }

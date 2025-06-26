@@ -90,6 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
         // ✅ Initialize ts-morph project
         const project = new Project({
             useInMemoryFileSystem: false,
+              skipFileDependencyResolution: true,
           compilerOptions: {
             allowJs: true,
             checkJs: false,
@@ -110,11 +111,17 @@ export function activate(context: vscode.ExtensionContext) {
           project.addSourceFilesFromTsConfig(tsconfigPath);
           console.log("✅ Loaded source files from tsconfig.");
         } else {
-          project.addSourceFilesAtPaths(path.join(localPath, '**/*.{ts,tsx,js,jsx}'));
+          project.addSourceFilesAtPaths([
+            path.join(localPath, '**/*.{ts,tsx,js,jsx}'),
+            '!' + path.join(localPath, 'node_modules/**/*')
+          ]);
+
           console.log("📂 Manually added JS/TS source files.");
         }
 
-        sourceFiles = project.getSourceFiles();
+        sourceFiles = project.getSourceFiles().filter(file =>
+          !file.getFilePath().includes('node_modules')
+        );;
         console.log("📁 Final source files loaded:", sourceFiles.map(f => f.getFilePath()));
 
 

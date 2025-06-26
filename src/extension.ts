@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerDefinitionProvider(['typescript', 'javascript'], {
       async provideDefinition(document, position, token) {
         const wordRange = document.getWordRangeAtPosition(position);
-        if (!wordRange) return;
+        if (!wordRange) {return;}
 
         const word = document.getText(wordRange);
         const text = document.getText();
@@ -68,7 +68,8 @@ export function activate(context: vscode.ExtensionContext) {
           if (fs.existsSync(pkgJsonPath)) {
             try {
               const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-              if (pkg.name === moduleName) {
+              const moduleShortName = moduleName.split('/').pop();
+              if (pkg.name === moduleName || pkg.name === moduleShortName) {
                 localPath = path.join(parentDir, dir);
                 console.log(`✅ Found local package '${pkg.name}' at: ${localPath}`);
                 break;

@@ -7,9 +7,9 @@
     "vscode": "^1.101.0"
   },
   "repository": {
-  "type": "git",
-  "url": "https://github.com/akshaym5147/vscode-local-link-extension.git"
-},
+    "type": "git",
+    "url": "https://github.com/akshaym5147/vscode-local-link-extension.git"
+  },
   "categories": [
     "Other"
   ],
@@ -17,6 +17,8 @@
     "onCommand:extension.helloWorld",
     "onLanguage:javascript",
     "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact",
     "onCommand:localModuleLinker.linkLocalModules"
   ],
   "main": "./dist/extension.js",

@@ -16,8 +16,10 @@ export function activate(context: vscode.ExtensionContext) {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath || '';
 
   context.subscriptions.push(
-    vscode.languages.registerDefinitionProvider(['typescript', 'javascript'], {
+    vscode.languages.registerDefinitionProvider(
+      ['javascript', 'typescript', 'javascriptreact', 'typescriptreact'], {
       async provideDefinition(document, position, token) {
+        console.log("🟡 provideDefinition triggered");
         const wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {return;}
 
@@ -87,6 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         // ✅ Initialize ts-morph project
         const project = new Project({
+            useInMemoryFileSystem: false,
           compilerOptions: {
             allowJs: true,
             checkJs: false,

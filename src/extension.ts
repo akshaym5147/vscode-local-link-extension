@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
       async provideDefinition(document, position, token) {
         console.log("🟡 provideDefinition triggered");
         const wordRange = document.getWordRangeAtPosition(position);
-        if (!wordRange) {return;}
+        if (!wordRange) { return; }
 
         const word = document.getText(wordRange);
         const text = document.getText();
@@ -89,8 +89,8 @@ export function activate(context: vscode.ExtensionContext) {
 
         // ✅ Initialize ts-morph project
         const project = new Project({
-            useInMemoryFileSystem: false,
-              skipFileDependencyResolution: true,
+          useInMemoryFileSystem: false,
+          skipFileDependencyResolution: true,
           compilerOptions: {
             allowJs: true,
             checkJs: false,
@@ -112,8 +112,16 @@ export function activate(context: vscode.ExtensionContext) {
           console.log("✅ Loaded source files from tsconfig.");
         } else {
           project.addSourceFilesAtPaths([
-            path.join(localPath, '**/*.{ts,tsx,js,jsx}'),
-            '!' + path.join(localPath, 'node_modules/**/*')
+            path.join(localPath, '**/*.js'),
+            path.join(localPath, '**/*.ts'),
+            path.join(localPath, '**/*.jsx'),
+            path.join(localPath, '**/*.tsx'),
+            `!${path.join(localPath, '**/*.test.*')}`,
+            `!${path.join(localPath, '**/__tests__/**')}`,
+            `!${path.join(localPath, '**/node_modules/**')}`,
+            `!${path.join(localPath, '**/dist/**')}`,
+            `!${path.join(localPath, '**/build/**')}`,
+            `!${path.join(localPath, '**/.next/**')}`,
           ]);
 
           console.log("📂 Manually added JS/TS source files.");
@@ -138,77 +146,72 @@ export function activate(context: vscode.ExtensionContext) {
 
         for (const sourceFile of sourceFiles) {
           try {
-            console.log(`🔍 Checking file: ${sourceFile.getFilePath()}`);
+            const filePath = sourceFile.getFilePath();
+
+            // ⛔ Skip test files, node_modules, dist, etc.
+            if (
+              /(__tests__|\.test\.(js|ts|jsx|tsx)|node_modules|\.next|dist|build)/.test(filePath)
+            ) {
+              console.log(`🚫 Skipping test/build file: ${filePath}`);
+              continue;
+            }
+
+            console.log(`🔍 Checking file: ${filePath}`);
             const exportedDeclarations = sourceFile.getExportedDeclarations();
 
             for (const [name, declarations] of exportedDeclarations) {
-              if (name === 'default' && declarations.length) {
-                for (const decl of declarations) {
-                  const aliased = decl.getSymbol()?.getAliasedSymbol();
-                  const finalDecl = aliased?.getDeclarations()?.[0] || decl;
-
-                  const id = finalDecl.getSymbol()?.getName();
-                  if (id === word || word === 'default') {
-                    const file = finalDecl.getSourceFile();
-                    const line = finalDecl.getStartLineNumber?.() ?? 1;
-                    const location = new vscode.Location(
-                      vscode.Uri.file(file.getFilePath()),
-                      new vscode.Position(line - 1, 0)
-                    );
-                    console.log(`🎯 Found match for '${word}' at: ${file.getFilePath()}:${line}`);
-                    foundLocations.push(location);
-                  }
-                }
-              }
-
+              // ✅ Match named export
               if (name === word && declarations.length) {
                 const decl = declarations[0];
                 const file = decl.getSourceFile();
                 const line = decl.getStartLineNumber?.() ?? 1;
-                const location = new vscode.Location(
-                  vscode.Uri.file(file.getFilePath()),
-                  new vscode.Position(line - 1, 0)
-                );
-                console.log(`🎯 Found named export '${word}' at: ${file.getFilePath()}:${line}`);
-                foundLocations.push(location);
+                return new vscode.Location(vscode.Uri.file(file.getFilePath()), new vscode.Position(line - 1, 0));
               }
-            }
 
-            let decls = exportedDeclarations.get(word);
+              // ✅ Handle default export: match identifier within expression
+              if (name === 'default') {
+                for (const decl of declarations) {
+                  let finalDecl = decl;
+                  const symbol = decl.getSymbol();
+                  const aliased = symbol?.getAliasedSymbol();
+                  if (aliased) {
+                    const aliasedDecls = aliased.getDeclarations();
+                    if (aliasedDecls?.length) {
+                      finalDecl = aliasedDecls[0] as typeof finalDecl;
+                    }
+                  }
 
-            if (!decls) {
-              decls = exportedDeclarations.get("default");
+                  // ✅ Check for function/class identifiers in expressions
+                  const expr = (finalDecl as any).getExpression?.();
+                  const exprName = expr?.getText?.();
+                  const declName = finalDecl.getSymbol()?.getName?.();
+                  const kind = expr?.getKindName?.() ?? '';
 
-              if (decls) {
-                const matching = decls.find(d => {
-                  const named = d as Node & { getName?: () => string };
-                  return typeof named.getName === 'function' && named.getName() === word;
-                });
+                  if (
+                    word === 'default' ||
+                    declName === word ||
+                    exprName === word ||
+                    /Identifier/.test(kind)
+                  ) {
+                    const file = finalDecl.getSourceFile();
+                    const line = finalDecl.getStartLineNumber?.() ?? 1;
+                    return new vscode.Location(vscode.Uri.file(file.getFilePath()), new vscode.Position(line - 1, 0));
+                  }
 
-                if (matching) {
-                  decls = [matching];
-                } else {
-                  console.log(`⚠️ Default export exists, but doesn't match '${word}'`);
-                  continue; // Try next file
+                  // 🪪 Handle anonymous default export: log but continue
+                  if (!declName && name === 'default') {
+                    console.log(`ℹ️ Anonymous default export in: ${filePath}`);
+                  }
                 }
-              } else {
-                console.log(`⚠️ No declaration found for '${word}'`);
-                continue; // Try next file
               }
             }
 
-            for (const decl of decls) {
-              const file = decl.getSourceFile();
-              const line = decl.getStartLineNumber?.() ?? 1;
-              const uri = vscode.Uri.file(file.getFilePath());
-              const position = new vscode.Position(line - 1, 0);
-              console.log(`🎯 Found fallback match for '${word}' at: ${file.getFilePath()}:${line}`);
-              foundLocations.push(new vscode.Location(uri, position));
-            }
+            console.log(`❌ Symbol '${word}' not found in ${filePath}`);
           } catch (err) {
             console.error(`🔥 Error in file ${sourceFile.getFilePath()}:`, err);
           }
         }
+
 
         if (foundLocations.length > 0) {
           console.log(`✅ Returning first match for '${word}'`);

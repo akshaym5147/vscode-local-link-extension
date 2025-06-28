@@ -148,6 +148,8 @@ export function activate(context: vscode.ExtensionContext) {
           try {
             const filePath = sourceFile.getFilePath();
 
+
+
             // ⛔ Skip test files, node_modules, dist, etc.
             if (
               /(__tests__|\.test\.(js|ts|jsx|tsx)|node_modules|\.next|dist|build)/.test(filePath)
@@ -158,6 +160,8 @@ export function activate(context: vscode.ExtensionContext) {
 
             console.log(`🔍 Checking file: ${filePath}`);
             const exportedDeclarations = sourceFile.getExportedDeclarations();
+            console.log(sourceFile);
+            console.log(`exportedDeclarations ${exportedDeclarations}`);
 
             for (const [name, declarations] of exportedDeclarations) {
               // ✅ Match named export

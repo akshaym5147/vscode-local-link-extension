@@ -82,6 +82,10 @@ function findSymbolInDirectory(dir: string, symbol: string): string | null {
   for (const file of files) {
     const fullPath = path.join(dir, file);
     console.log("Checking file:", fullPath);
+    if( IGNORED_FOLDERS.includes(file) ) {
+      console.log("Ignoring folder:", fullPath);
+      continue;
+    }    
     if (fs.statSync(fullPath).isDirectory()) {
       console.log("Entering directory:", fullPath);
       const result = findSymbolInDirectory(fullPath, symbol);

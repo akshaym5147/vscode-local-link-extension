@@ -5,6 +5,29 @@ import * as ts from "typescript";
 /**
  * Attempts to resolve a symbol to its definition file.
  */
+const IGNORED_FOLDERS = [ "lib", "dist", "build", "node_modules", "test", "tests", "spec", "specs", "examples", "example", "demo", "demos" ];
+
+
+function getAllFiles(dir: string, fileList: string[] = []): string[] {
+  const files = fs.readdirSync(dir);
+
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    const stat = fs.statSync(fullPath);
+
+    // Skip ignored folders
+    if (stat.isDirectory()) {
+      if (!IGNORED_FOLDERS.includes(file)) {
+        getAllFiles(fullPath, fileList);
+      }
+    } else if (file.endsWith(".ts") || file.endsWith(".js") || file.endsWith(".tsx") || file.endsWith(".jsx")) {
+      fileList.push(fullPath);
+    }
+  }
+
+  return fileList;
+}
+
 export async function resolveSymbolPath(
   importPath: string,
   symbol: string,
@@ -40,10 +63,14 @@ export async function resolveSymbolPath(
 }
 
 function findSymbolInPackage(pkgPath: string, symbol: string): string | null {
-  const possibleDirs = ["src", "lib", "dist", "build", "."];
+  const possibleDirs = ["src", "."];
   for (const dir of possibleDirs) {
     const candidatePath = path.join(pkgPath, dir);
-    if (!fs.existsSync(candidatePath)) continue;
+    console.log("Checking candidate path:", candidatePath);
+    if (
+      !fs.existsSync(candidatePath)
+      // || candidatePath.includes()
+    ) continue;
     const result = findSymbolInDirectory(candidatePath, symbol);
     if (result) return result;
   }

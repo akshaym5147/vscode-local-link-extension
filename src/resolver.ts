@@ -15,10 +15,11 @@ export async function resolveSymbolPath(
   if (!importPath.startsWith(".") && !importPath.startsWith("/")) {
     const importParts = importPath.split("/");
     console.log("Import parts:", importParts);
-    const packageName = importPath.startsWith("@")
-      ? `${importParts[0]}/${importParts[1]}`
-      : importParts[0];
+    // const packageName = importPath.startsWith("@")
+    //   ? `${importParts[0]}/${importParts[1]}`
+    //   : importParts[0];
 
+    const packageName = importParts[importParts.length - 1];
     console.log("Package name:", packageName);
     const siblingPath = path.join(workspaceRoot, "..", packageName);
 

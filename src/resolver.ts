@@ -1,31 +1,20 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as ts from "typescript";
+import ts from "typescript";
 
-/**
- * Attempts to resolve a symbol to its definition file.
- */
 const IGNORED_FOLDERS = [ "lib", "dist", "build", "node_modules", "test", "tests", "spec", "specs", "examples", "example", "demo", "demos" ];
 
+function getIndexFile(pkgPath: string): string | null {
+  const indexFiles = ["index.ts", "index.tsx", "index.js", "index.jsx"];
+  for (const file of indexFiles) {
+    const fullPath = path.join(pkgPath, file);
+    const fullPathInSrc = path.join(pkgPath, 'src', file);
 
-function getAllFiles(dir: string, fileList: string[] = []): string[] {
-  const files = fs.readdirSync(dir);
+    if (fs.existsSync(fullPath)) {return fullPath;}
+    if (fs.existsSync(fullPathInSrc)) {return fullPathInSrc;}
 
-  for (const file of files) {
-    const fullPath = path.join(dir, file);
-    const stat = fs.statSync(fullPath);
-
-    // Skip ignored folders
-    if (stat.isDirectory()) {
-      if (!IGNORED_FOLDERS.includes(file)) {
-        getAllFiles(fullPath, fileList);
-      }
-    } else if (file.endsWith(".ts") || file.endsWith(".js") || file.endsWith(".tsx") || file.endsWith(".jsx")) {
-      fileList.push(fullPath);
-    }
   }
-
-  return fileList;
+  return null;
 }
 
 export async function resolveSymbolPath(
@@ -37,42 +26,32 @@ export async function resolveSymbolPath(
   // Handle scoped or non-scoped import like "pkg" or "@org/pkg"
   if (!importPath.startsWith(".") && !importPath.startsWith("/")) {
     const importParts = importPath.split("/");
-    console.log("Import parts:", importParts);
-    // const packageName = importPath.startsWith("@")
-    //   ? `${importParts[0]}/${importParts[1]}`
-    //   : importParts[0];
-
     const packageName = importParts[importParts.length - 1];
-    console.log("Package name:", packageName);
     const siblingPath = path.join(workspaceRoot, "..", packageName);
-
-    console.log("Sibling path:", siblingPath);
     const packageJsonPath = path.join(siblingPath, "package.json");
-    console.log("Package JSON path:", packageJsonPath);
+
     if (!fs.existsSync(packageJsonPath)) {
       console.warn(`Package not found: ${packageName} at ${siblingPath}`);
       return null;
     }
 
     return findSymbolInPackage(siblingPath, symbol);
-  } else {
-    // Local relative path import
-    const fullImportPath = path.resolve(workspaceRoot, importPath);
-    return findSymbolInFileOrDir(fullImportPath, symbol);
   }
+  return null;
 }
 
 function findSymbolInPackage(pkgPath: string, symbol: string): string | null {
   const possibleDirs = ["src", "."];
   for (const dir of possibleDirs) {
     const candidatePath = path.join(pkgPath, dir);
-    console.log("Checking candidate path:", candidatePath);
-    if (
-      !fs.existsSync(candidatePath)
-      // || candidatePath.includes()
-    ) continue;
+    if (!fs.existsSync(candidatePath)) {continue;}
     const result = findSymbolInDirectory(candidatePath, symbol);
-    if (result) return result;
+    if (result) {return result;}
+    const indexFile = getIndexFile(pkgPath);
+    if (indexFile) {
+      // Check if the index file contains the symbol
+      return indexFile;
+    }
   }
   return null;
 }
@@ -81,29 +60,14 @@ function findSymbolInDirectory(dir: string, symbol: string): string | null {
   const files = fs.readdirSync(dir);
   for (const file of files) {
     const fullPath = path.join(dir, file);
-    console.log("Checking file:", fullPath);
-    if( IGNORED_FOLDERS.includes(file) ) {
-      console.log("Ignoring folder:", fullPath);
+    if(IGNORED_FOLDERS.includes(file) ) {
       continue;
-    }    
-    if (fs.statSync(fullPath).isDirectory()) {
-      console.log("Entering directory:", fullPath);
-      const result = findSymbolInDirectory(fullPath, symbol);
-      console.log("Result from directory:", result);
-      if (result) return result;
-    } else if (fullPath.endsWith(".ts") || fullPath.endsWith(".js") || fullPath.endsWith(".tsx") || fullPath.endsWith(".jsx")) {
-      if (containsSymbol(fullPath, symbol)) return fullPath;
     }
-  }
-  return null;
-}
-
-function findSymbolInFileOrDir(importPath: string, symbol: string): string | null {
-  if (fs.existsSync(importPath)) {
-    if (fs.statSync(importPath).isDirectory()) {
-      return findSymbolInDirectory(importPath, symbol);
-    } else {
-      return containsSymbol(importPath, symbol) ? importPath : null;
+    if (fs.statSync(fullPath).isDirectory()) {
+      const result = findSymbolInDirectory(fullPath, symbol);
+      if (result) {return result;}
+    } else if (fullPath.endsWith(".ts") || fullPath.endsWith(".js") || fullPath.endsWith(".tsx") || fullPath.endsWith(".jsx")) {
+      if (containsSymbol(fullPath, symbol)) {return fullPath;}
     }
   }
   return null;
@@ -119,13 +83,10 @@ function containsSymbol(filePath: string, symbol: string): boolean {
       true
     );
 
-    console.log(`Searching for symbol "${symbol}" in file: ${filePath}`);
-    console.log("Source file text:", sourceFile.text);
-
     let found = false;
 
     const visit = (node: ts.Node) => {
-      if (found) return;
+      if (found) {return;}
 
       // Handle named exports like: export { X } or export { X as Y }
       if (
@@ -137,7 +98,6 @@ function containsSymbol(filePath: string, symbol: string): boolean {
           const exportedName = element.name.text;
           const originalName = element.propertyName?.text || exportedName;
 
-          console.log(`[Named Export] Exported: ${exportedName}, Original: ${originalName}`);
           if (exportedName === symbol || originalName === symbol) {
             found = true;
             return;
@@ -149,7 +109,6 @@ function containsSymbol(filePath: string, symbol: string): boolean {
       else if (ts.isExportAssignment(node)) {
         if (!node.isExportEquals && ts.isIdentifier(node.expression)) {
           const name = node.expression.text;
-          console.log(`[Default Export Assignment] Identifier: ${name}`);
           if (name === symbol) {
             found = true;
             return;
@@ -163,7 +122,6 @@ function containsSymbol(filePath: string, symbol: string): boolean {
         node.modifiers?.some(mod => mod.kind === ts.SyntaxKind.ExportKeyword)
       ) {
         const name = node.name?.text;
-        console.log(`[Exported Function/Class] Name: ${name}`);
         if (name === symbol) {
           found = true;
           return;
@@ -178,7 +136,6 @@ function containsSymbol(filePath: string, symbol: string): boolean {
         for (const decl of node.declarationList.declarations) {
           if (ts.isIdentifier(decl.name)) {
             const varName = decl.name.text;
-            console.log(`[Exported Variable] Name: ${varName}`);
             if (varName === symbol) {
               found = true;
               return;

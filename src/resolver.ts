@@ -1,6 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as ts from "typescript";
+import * as vscode from "vscode";
+
+const outputChannel = vscode.window.createOutputChannel('Local Link Extension');
+
+function logToFile(message: string) {
+  const logPath = path.join(__dirname, 'my-extension-log.txt');
+  fs.appendFileSync(logPath, message + '\\n');
+}
 
 const IGNORED_FOLDERS = [
   "lib", "dist", "build", "node_modules", "test", "tests", "spec", "specs", "examples", "example", "demo", "demos"
@@ -12,15 +20,15 @@ function getIndexFile(pkgPath: string): string | null {
     const fullPath = path.join(pkgPath, file);
     const fullPathInSrc = path.join(pkgPath, "src", file);
     if (fs.existsSync(fullPath)) {
-      console.log(`[getIndexFile] Found index file at: ${fullPath}`);
+      outputChannel.appendLine(`[getIndexFile] Found index file at: ${fullPath}`);
       return fullPath;
     }
     if (fs.existsSync(fullPathInSrc)) {
-      console.log(`[getIndexFile] Found index file in src at: ${fullPathInSrc}`);
+      outputChannel.appendLine(`[getIndexFile] Found index file in src at: ${fullPathInSrc}`);
       return fullPathInSrc;
     }
   }
-  console.log(`[getIndexFile] No index file found in: ${pkgPath}`);
+  outputChannel.appendLine(`[getIndexFile] No index file found in: ${pkgPath}`);
   return null;
 }
 
@@ -30,23 +38,23 @@ export async function resolveSymbolPath(
   workspaceRoot: string
 ): Promise<string | null> {
   try {
-    console.log(`[resolveSymbolPath] importPath: ${importPath}, symbol: ${symbol}, workspaceRoot: ${workspaceRoot}`);
+    outputChannel.appendLine(`[resolveSymbolPath] importPath: ${importPath}, symbol: ${symbol}, workspaceRoot: ${workspaceRoot}`);
     // Handle scoped or non-scoped import like "pkg" or "@org/pkg"
     if (!importPath.startsWith(".") && !importPath.startsWith("/")) {
       const importParts = importPath.split("/");
       const packageName = importParts[importParts.length - 1];
       const siblingPath = path.join(workspaceRoot, "..", packageName);
       const packageJsonPath = path.join(siblingPath, "package.json");
-      console.log(`[resolveSymbolPath] Looking for sibling package at: ${siblingPath}`);
+      outputChannel.appendLine(`[resolveSymbolPath] Looking for sibling package at: ${siblingPath}`);
       if (!fs.existsSync(packageJsonPath)) {
         console.warn(`[resolveSymbolPath] Package not found: ${packageName} at ${siblingPath}`);
         return null;
       }
       const result = findSymbolInPackage(siblingPath, symbol);
-      console.log(`[resolveSymbolPath] findSymbolInPackage result: ${result}`);
+      outputChannel.appendLine(`[resolveSymbolPath] findSymbolInPackage result: ${result}`);
       return result;
     }
-    console.log(`[resolveSymbolPath] importPath is relative or absolute, not handled.`);
+    outputChannel.appendLine(`[resolveSymbolPath] importPath is relative or absolute, not handled.`);
     return null;
   } catch (e) {
     console.error('[resolveSymbolPath] Error:', e);
@@ -55,41 +63,41 @@ export async function resolveSymbolPath(
 }
 
 function findSymbolInPackage(pkgPath: string, symbol: string): string | null {
-  console.log(`[findSymbolInPackage] Searching for symbol '${symbol}' in package: ${pkgPath}`);
+  outputChannel.appendLine(`[findSymbolInPackage] Searching for symbol '${symbol}' in package: ${pkgPath}`);
   const possibleDirs = ["src", "."];
   let indexFile: string | null = null;
   for (const dir of possibleDirs) {
     const candidatePath = path.join(pkgPath, dir);
     if (!fs.existsSync(candidatePath)) {
-      console.log(`[findSymbolInPackage] Directory does not exist: ${candidatePath}`);
+      outputChannel.appendLine(`[findSymbolInPackage] Directory does not exist: ${candidatePath}`);
       continue;
     }
-    console.log(`[findSymbolInPackage] Searching in directory: ${candidatePath}`);
+    outputChannel.appendLine(`[findSymbolInPackage] Searching in directory: ${candidatePath}`);
     const result = findSymbolInDirectory(candidatePath, symbol);
     if (result) {
-      console.log(`[findSymbolInPackage] Found symbol '${symbol}' in: ${result}`);
+      outputChannel.appendLine(`[findSymbolInPackage] Found symbol '${symbol}' in: ${result}`);
       return result;
     }
     if (!indexFile) {
       indexFile = getIndexFile(pkgPath);
       if (indexFile) {
-        console.log(`[findSymbolInPackage] Fallback to index file: ${indexFile}`);
+        outputChannel.appendLine(`[findSymbolInPackage] Fallback to index file: ${indexFile}`);
       }
     }
   }
   if (!indexFile) {
-    console.log(`[findSymbolInPackage] Symbol '${symbol}' not found in any directory or index file.`);
+    outputChannel.appendLine(`[findSymbolInPackage] Symbol '${symbol}' not found in any directory or index file.`);
   }
   return indexFile;
 }
 
 function findSymbolInDirectory(dir: string, symbol: string): string | null {
-  console.log(`[findSymbolInDirectory] Searching for symbol '${symbol}' in directory: ${dir}`);
+  outputChannel.appendLine(`[findSymbolInDirectory] Searching for symbol '${symbol}' in directory: ${dir}`);
   const files = fs.readdirSync(dir);
   for (const file of files) {
     const fullPath = path.join(dir, file);
     if (IGNORED_FOLDERS.includes(file)) {
-      console.log(`[findSymbolInDirectory] Skipping ignored folder: ${file}`);
+      outputChannel.appendLine(`[findSymbolInDirectory] Skipping ignored folder: ${file}`);
       continue;
     }
     if (fs.statSync(fullPath).isDirectory()) {
@@ -99,14 +107,14 @@ function findSymbolInDirectory(dir: string, symbol: string): string | null {
       }
     } else if (fullPath.endsWith(".ts") || fullPath.endsWith(".js") || fullPath.endsWith(".tsx") || fullPath.endsWith(".jsx")) {
       if (containsSymbol(fullPath, symbol)) {
-        console.log(`[findSymbolInDirectory] Found symbol '${symbol}' in file: ${fullPath}`);
+        outputChannel.appendLine(`[findSymbolInDirectory] Found symbol '${symbol}' in file: ${fullPath}`);
         return fullPath;
       } else {
-        console.log(`[findSymbolInDirectory] Symbol '${symbol}' not found in file: ${fullPath}`);
+        outputChannel.appendLine(`[findSymbolInDirectory] Symbol '${symbol}' not found in file: ${fullPath}`);
       }
     }
   }
-  console.log(`[findSymbolInDirectory] Symbol '${symbol}' not found in directory: ${dir}`);
+  outputChannel.appendLine(`[findSymbolInDirectory] Symbol '${symbol}' not found in directory: ${dir}`);
   return null;
 }
 
@@ -122,10 +130,10 @@ function containsSymbol(filePath: string, symbol: string): boolean {
     let found = false;
     function visit(node: ts.Node) {
       if (found) {return;}
-      if (isNamedExport(node, symbol)) { found = true; console.log(`[containsSymbol] Found named export '${symbol}' in ${filePath}`); return; }
-      if (isDefaultExportAssignment(node, symbol)) { found = true; console.log(`[containsSymbol] Found default export assignment '${symbol}' in ${filePath}`); return; }
-      if (isInlineDefaultExport(node, symbol)) { found = true; console.log(`[containsSymbol] Found inline default export '${symbol}' in ${filePath}`); return; }
-      if (isExportedVariable(node, symbol)) { found = true; console.log(`[containsSymbol] Found exported variable '${symbol}' in ${filePath}`); return; }
+      if (isNamedExport(node, symbol)) { found = true; outputChannel.appendLine(`[containsSymbol] Found named export '${symbol}' in ${filePath}`); return; }
+      if (isDefaultExportAssignment(node, symbol)) { found = true; outputChannel.appendLine(`[containsSymbol] Found default export assignment '${symbol}' in ${filePath}`); return; }
+      if (isInlineDefaultExport(node, symbol)) { found = true; outputChannel.appendLine(`[containsSymbol] Found inline default export '${symbol}' in ${filePath}`); return; }
+      if (isExportedVariable(node, symbol)) { found = true; outputChannel.appendLine(`[containsSymbol] Found exported variable '${symbol}' in ${filePath}`); return; }
       // NEW: Check for top-level variable, function, or class declaration (not exported)
       if (
         (ts.isVariableStatement(node) || ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
@@ -136,7 +144,7 @@ function containsSymbol(filePath: string, symbol: string): boolean {
           for (const decl of node.declarationList.declarations) {
             if (ts.isIdentifier(decl.name) && decl.name.text === symbol) {
               found = true;
-              console.log(`[containsSymbol] Found top-level variable '${symbol}' in ${filePath}`);
+              outputChannel.appendLine(`[containsSymbol] Found top-level variable '${symbol}' in ${filePath}`);
               return;
             }
           }
@@ -144,7 +152,7 @@ function containsSymbol(filePath: string, symbol: string): boolean {
         // Function or class
         if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name?.text === symbol) {
           found = true;
-          console.log(`[containsSymbol] Found top-level function/class '${symbol}' in ${filePath}`);
+          outputChannel.appendLine(`[containsSymbol] Found top-level function/class '${symbol}' in ${filePath}`);
           return;
         }
       }
@@ -155,10 +163,10 @@ function containsSymbol(filePath: string, symbol: string): boolean {
       // Suggest: check if file name matches symbol
       const base = path.basename(filePath, path.extname(filePath));
       if (base === symbol) {
-        console.log(`[containsSymbol] File name matches symbol: ${base} === ${symbol}`);
+        outputChannel.appendLine(`[containsSymbol] File name matches symbol: ${base} === ${symbol}`);
         found = true;
       } else {
-        console.log(`[containsSymbol] Symbol '${symbol}' not found in file: ${filePath}`);
+        outputChannel.appendLine(`[containsSymbol] Symbol '${symbol}' not found in file: ${filePath}`);
       }
     }
     return found;

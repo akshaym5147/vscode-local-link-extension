@@ -16,6 +16,7 @@ class LocalDefinitionProvider implements vscode.DefinitionProvider {
     document: vscode.TextDocument,
     position: vscode.Position
   ): Promise<vscode.Definition | null> {
+      outputChannel.show(true); // Show the output channel
     // Get the word at the position
     const wordRange = document.getWordRangeAtPosition(position);
     if (!wordRange) {return null;}

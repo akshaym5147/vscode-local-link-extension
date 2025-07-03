@@ -13,14 +13,8 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:extension.helloWorld",
-    "onLanguage:javascript",
-    "onLanguage:typescript",
-    "onLanguage:javascriptreact",
-    "onLanguage:typescriptreact",
-    "onCommand:localModuleLinker.linkLocalModules"
-  ],
+      "build": "tsc",
+  "activationEvents": ["onLanguage:javascript", "onLanguage:typescript"],
   "main": "./dist/extension.js",
   "contributes": {
     "languages": [
@@ -33,12 +27,8 @@
     ],
     "commands": [
       {
-        "command": "extension.helloWorld",
-        "title": "Hello World"
-      },
-      {
-        "command": "localModuleLinker.linkLocalModules",
-        "title": "Link Local Modules"
+        "command": "extension.resolveLocalSymbol",
+        "title": "Resolve Local Symbol"
       }
     ]
   },

@@ -11,9 +11,16 @@ function getIndexFile(pkgPath: string): string | null {
   for (const file of indexFiles) {
     const fullPath = path.join(pkgPath, file);
     const fullPathInSrc = path.join(pkgPath, "src", file);
-    if (fs.existsSync(fullPath)) {return fullPath;}
-    if (fs.existsSync(fullPathInSrc)) {return fullPathInSrc;}
+    if (fs.existsSync(fullPath)) {
+      console.log(`[getIndexFile] Found index file at: ${fullPath}`);
+      return fullPath;
+    }
+    if (fs.existsSync(fullPathInSrc)) {
+      console.log(`[getIndexFile] Found index file in src at: ${fullPathInSrc}`);
+      return fullPathInSrc;
+    }
   }
+  console.log(`[getIndexFile] No index file found in: ${pkgPath}`);
   return null;
 }
 
@@ -23,50 +30,83 @@ export async function resolveSymbolPath(
   workspaceRoot: string
 ): Promise<string | null> {
   try {
+    console.log(`[resolveSymbolPath] importPath: ${importPath}, symbol: ${symbol}, workspaceRoot: ${workspaceRoot}`);
     // Handle scoped or non-scoped import like "pkg" or "@org/pkg"
     if (!importPath.startsWith(".") && !importPath.startsWith("/")) {
       const importParts = importPath.split("/");
       const packageName = importParts[importParts.length - 1];
       const siblingPath = path.join(workspaceRoot, "..", packageName);
       const packageJsonPath = path.join(siblingPath, "package.json");
+      console.log(`[resolveSymbolPath] Looking for sibling package at: ${siblingPath}`);
       if (!fs.existsSync(packageJsonPath)) {
-        console.warn(`Package not found: ${packageName} at ${siblingPath}`);
+        console.warn(`[resolveSymbolPath] Package not found: ${packageName} at ${siblingPath}`);
         return null;
       }
-      return findSymbolInPackage(siblingPath, symbol);
+      const result = findSymbolInPackage(siblingPath, symbol);
+      console.log(`[resolveSymbolPath] findSymbolInPackage result: ${result}`);
+      return result;
     }
+    console.log(`[resolveSymbolPath] importPath is relative or absolute, not handled.`);
     return null;
   } catch (e) {
-    console.error('Error in resolveSymbolPath:', e);
+    console.error('[resolveSymbolPath] Error:', e);
     return null;
   }
 }
 
 function findSymbolInPackage(pkgPath: string, symbol: string): string | null {
+  console.log(`[findSymbolInPackage] Searching for symbol '${symbol}' in package: ${pkgPath}`);
   const possibleDirs = ["src", "."];
   let indexFile: string | null = null;
   for (const dir of possibleDirs) {
     const candidatePath = path.join(pkgPath, dir);
-    if (!fs.existsSync(candidatePath)) {continue;}
+    if (!fs.existsSync(candidatePath)) {
+      console.log(`[findSymbolInPackage] Directory does not exist: ${candidatePath}`);
+      continue;
+    }
+    console.log(`[findSymbolInPackage] Searching in directory: ${candidatePath}`);
     const result = findSymbolInDirectory(candidatePath, symbol);
-    if (result) {return result;}
-    if (!indexFile) {indexFile = getIndexFile(pkgPath);}
+    if (result) {
+      console.log(`[findSymbolInPackage] Found symbol '${symbol}' in: ${result}`);
+      return result;
+    }
+    if (!indexFile) {
+      indexFile = getIndexFile(pkgPath);
+      if (indexFile) {
+        console.log(`[findSymbolInPackage] Fallback to index file: ${indexFile}`);
+      }
+    }
+  }
+  if (!indexFile) {
+    console.log(`[findSymbolInPackage] Symbol '${symbol}' not found in any directory or index file.`);
   }
   return indexFile;
 }
 
 function findSymbolInDirectory(dir: string, symbol: string): string | null {
+  console.log(`[findSymbolInDirectory] Searching for symbol '${symbol}' in directory: ${dir}`);
   const files = fs.readdirSync(dir);
   for (const file of files) {
     const fullPath = path.join(dir, file);
-    if (IGNORED_FOLDERS.includes(file)) {continue;}
+    if (IGNORED_FOLDERS.includes(file)) {
+      console.log(`[findSymbolInDirectory] Skipping ignored folder: ${file}`);
+      continue;
+    }
     if (fs.statSync(fullPath).isDirectory()) {
       const result = findSymbolInDirectory(fullPath, symbol);
-      if (result) {return result;}
+      if (result) {
+        return result;
+      }
     } else if (fullPath.endsWith(".ts") || fullPath.endsWith(".js") || fullPath.endsWith(".tsx") || fullPath.endsWith(".jsx")) {
-      if (containsSymbol(fullPath, symbol)) {return fullPath;}
+      if (containsSymbol(fullPath, symbol)) {
+        console.log(`[findSymbolInDirectory] Found symbol '${symbol}' in file: ${fullPath}`);
+        return fullPath;
+      } else {
+        console.log(`[findSymbolInDirectory] Symbol '${symbol}' not found in file: ${fullPath}`);
+      }
     }
   }
+  console.log(`[findSymbolInDirectory] Symbol '${symbol}' not found in directory: ${dir}`);
   return null;
 }
 
@@ -82,16 +122,19 @@ function containsSymbol(filePath: string, symbol: string): boolean {
     let found = false;
     function visit(node: ts.Node) {
       if (found) {return;}
-      if (isNamedExport(node, symbol)) { found = true; return; }
-      if (isDefaultExportAssignment(node, symbol)) { found = true; return; }
-      if (isInlineDefaultExport(node, symbol)) { found = true; return; }
-      if (isExportedVariable(node, symbol)) { found = true; return; }
+      if (isNamedExport(node, symbol)) { found = true; console.log(`[containsSymbol] Found named export '${symbol}' in ${filePath}`); return; }
+      if (isDefaultExportAssignment(node, symbol)) { found = true; console.log(`[containsSymbol] Found default export assignment '${symbol}' in ${filePath}`); return; }
+      if (isInlineDefaultExport(node, symbol)) { found = true; console.log(`[containsSymbol] Found inline default export '${symbol}' in ${filePath}`); return; }
+      if (isExportedVariable(node, symbol)) { found = true; console.log(`[containsSymbol] Found exported variable '${symbol}' in ${filePath}`); return; }
       ts.forEachChild(node, visit);
     }
     ts.forEachChild(sourceFile, visit);
+    if (!found) {
+      console.log(`[containsSymbol] Symbol '${symbol}' not found in file: ${filePath}`);
+    }
     return found;
   } catch (e) {
-    console.error("Failed to parse file:", filePath, e);
+    console.error(`[containsSymbol] Failed to parse file: ${filePath}`, e);
     return false;
   }
 }

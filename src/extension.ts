@@ -5,7 +5,7 @@ export function activate(context: vscode.ExtensionContext) {
   const provider = new LocalDefinitionProvider();
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
-      [{ language: "javascript" }, { language: "typescript" }],
+      [{ language: "javascript" }, { language: "typescript" },     { language: "javascriptreact" }, { language: "typescriptreact" }],
       provider
     )
   );

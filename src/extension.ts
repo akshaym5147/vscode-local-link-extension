@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { outputChannel, resolveSymbolPath } from "./resolver";
+import { resolveSymbolPath } from "./resolver";
 
 export function activate(context: vscode.ExtensionContext) {
   const provider = new LocalDefinitionProvider();
@@ -16,8 +16,6 @@ class LocalDefinitionProvider implements vscode.DefinitionProvider {
     document: vscode.TextDocument,
     position: vscode.Position
   ): Promise<vscode.Definition | null> {
-      outputChannel.show(true); // Show the output channel
-    // Get the word at the position
     const wordRange = document.getWordRangeAtPosition(position);
     if (!wordRange) {return null;}
     const symbol = document.getText(wordRange);
@@ -46,8 +44,6 @@ class LocalDefinitionProvider implements vscode.DefinitionProvider {
     try {
       const resolvedPath = await resolveSymbolPath(importPath, symbol, workspaceRoot);
       if (!resolvedPath) {return null;}
-      outputChannel.show(true); // Show the output channel
-      outputChannel.appendLine(`[provideDefinition] Resolved path: ${resolvedPath}`);
       return new vscode.Location(
         vscode.Uri.file(resolvedPath),
         new vscode.Position(0, 0)

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { resolveSymbolPath } from "./resolver";
+import { outputChannel, resolveSymbolPath } from "./resolver";
 
 export function activate(context: vscode.ExtensionContext) {
   const provider = new LocalDefinitionProvider();
@@ -45,6 +45,8 @@ class LocalDefinitionProvider implements vscode.DefinitionProvider {
     try {
       const resolvedPath = await resolveSymbolPath(importPath, symbol, workspaceRoot);
       if (!resolvedPath) {return null;}
+      outputChannel.show(true); // Show the output channel
+      outputChannel.appendLine(`[provideDefinition] Resolved path: ${resolvedPath}`);
       return new vscode.Location(
         vscode.Uri.file(resolvedPath),
         new vscode.Position(0, 0)

@@ -3,7 +3,7 @@ import * as path from "path";
 import * as ts from "typescript";
 import * as vscode from "vscode";
 
-const outputChannel = vscode.window.createOutputChannel('Local Link Extension');
+export const outputChannel = vscode.window.createOutputChannel('Local Link Extension');
 
 function logToFile(message: string) {
   const logPath = path.join(__dirname, 'my-extension-log.txt');

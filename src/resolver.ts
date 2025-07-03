@@ -126,11 +126,40 @@ function containsSymbol(filePath: string, symbol: string): boolean {
       if (isDefaultExportAssignment(node, symbol)) { found = true; console.log(`[containsSymbol] Found default export assignment '${symbol}' in ${filePath}`); return; }
       if (isInlineDefaultExport(node, symbol)) { found = true; console.log(`[containsSymbol] Found inline default export '${symbol}' in ${filePath}`); return; }
       if (isExportedVariable(node, symbol)) { found = true; console.log(`[containsSymbol] Found exported variable '${symbol}' in ${filePath}`); return; }
+      // NEW: Check for top-level variable, function, or class declaration (not exported)
+      if (
+        (ts.isVariableStatement(node) || ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+        node.parent && ts.isSourceFile(node.parent)
+      ) {
+        // Variable
+        if (ts.isVariableStatement(node)) {
+          for (const decl of node.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name) && decl.name.text === symbol) {
+              found = true;
+              console.log(`[containsSymbol] Found top-level variable '${symbol}' in ${filePath}`);
+              return;
+            }
+          }
+        }
+        // Function or class
+        if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name?.text === symbol) {
+          found = true;
+          console.log(`[containsSymbol] Found top-level function/class '${symbol}' in ${filePath}`);
+          return;
+        }
+      }
       ts.forEachChild(node, visit);
     }
     ts.forEachChild(sourceFile, visit);
     if (!found) {
-      console.log(`[containsSymbol] Symbol '${symbol}' not found in file: ${filePath}`);
+      // Suggest: check if file name matches symbol
+      const base = path.basename(filePath, path.extname(filePath));
+      if (base === symbol) {
+        console.log(`[containsSymbol] File name matches symbol: ${base} === ${symbol}`);
+        found = true;
+      } else {
+        console.log(`[containsSymbol] Symbol '${symbol}' not found in file: ${filePath}`);
+      }
     }
     return found;
   } catch (e) {
